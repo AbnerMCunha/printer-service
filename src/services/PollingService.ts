@@ -182,20 +182,33 @@ export class PollingService {
       const orders = response.data.orders || [];
       const count = response.data.count || 0;
 
-      logger.debug(`Encontrados ${count} pedido(s) pendente(s)`);
+      logger.info(`📦 Encontrados ${count} pedido(s) pendente(s)`);
 
       if (orders.length === 0) {
         // Atualizar lastCheckAt mesmo sem novos pedidos
         this.lastCheckAt = response.data.timestamp;
+        logger.debug('Nenhum pedido novo encontrado');
         return;
       }
 
+      logger.info(`🔄 Processando ${orders.length} pedido(s)...`);
+
       // Processar cada pedido
       for (const order of orders) {
+        logger.info(`📋 Verificando pedido ${order.id.slice(-8)} (status: ${order.status})...`);
+        
         if (this.shouldPrintOrder(order)) {
+          logger.info(`✅ Pedido ${order.id.slice(-8)} será impresso`);
           await this.processOrder(order);
         } else {
-          logger.debug(`Pedido ${order.id.slice(-8)} ignorado (já impresso ou status inválido)`);
+          const reason = order.kitchenReceiptAutoPrintedAt 
+            ? 'já foi impresso anteriormente'
+            : !['PENDING', 'CONFIRMED', 'AWAITING_CASH_PAYMENT'].includes(order.status)
+            ? `status inválido: ${order.status}`
+            : this.processedOrderIds.has(order.id)
+            ? 'já foi processado nesta sessão'
+            : 'razão desconhecida';
+          logger.info(`⏭️  Pedido ${order.id.slice(-8)} ignorado: ${reason}`);
         }
       }
 

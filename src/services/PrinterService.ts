@@ -143,6 +143,100 @@ export class PrinterService {
   }
 
   /**
+   * Imprimir diretamente em porta COM (Windows)
+   */
+  private async printViaComPort(receiptText: string, comPort: string): Promise<boolean> {
+    const platform = os.platform();
+    
+    if (platform !== 'win32') {
+      logger.error('Impressão via porta COM só está disponível no Windows');
+      return false;
+    }
+
+    const tempFile = path.join(os.tmpdir(), `receipt-com-${Date.now()}.txt`);
+
+    try {
+      // Criar arquivo temporário com encoding correto
+      fs.writeFileSync(tempFile, receiptText, 'utf-8');
+      
+      logger.info(`Enviando para porta COM: ${comPort}`);
+      logger.debug(`Arquivo temporário: ${tempFile}`);
+
+      // Usar comando COPY do Windows para enviar diretamente para a porta COM
+      // COPY /B garante modo binário (importante para comandos ESC/POS)
+      const command = `copy /B "${tempFile}" "${comPort}"`;
+
+      logger.debug(`Comando: ${command}`);
+
+      const { stdout, stderr } = await execAsync(command, {
+        maxBuffer: 1024 * 1024,
+        timeout: 30000,
+      });
+
+      // COPY geralmente não retorna nada em stdout quando bem-sucedido
+      if (stderr) {
+        const stderrLower = stderr.toLowerCase();
+        const hasError = 
+          stderrLower.includes('error') ||
+          stderrLower.includes('erro') ||
+          stderrLower.includes('não encontrado') ||
+          stderrLower.includes('not found') ||
+          stderrLower.includes('acesso negado') ||
+          stderrLower.includes('access denied') ||
+          stderrLower.includes('não é possível') ||
+          stderrLower.includes('cannot');
+
+        if (hasError) {
+          logger.error(`Erro ao imprimir na porta COM ${comPort}: ${stderr}`);
+          try {
+            if (fs.existsSync(tempFile)) {
+              fs.unlinkSync(tempFile);
+            }
+          } catch (e: any) {
+            logger.debug(`Erro ao remover arquivo temporário: ${e.message}`);
+          }
+          return false;
+        } else {
+          // Avisos que não são erros
+          logger.debug(`Aviso do COPY: ${stderr.substring(0, 100)}`);
+        }
+      }
+
+      // Limpar arquivo temporário após sucesso
+      setTimeout(() => {
+        try {
+          if (fs.existsSync(tempFile)) {
+            fs.unlinkSync(tempFile);
+            logger.debug(`Arquivo temporário removido: ${tempFile}`);
+          }
+        } catch (e: any) {
+          logger.warn(`Não foi possível remover arquivo temporário: ${e.message}`);
+        }
+      }, 5000);
+
+      logger.info(`✅ Dados enviados para porta COM ${comPort}`);
+      return true;
+    } catch (error: any) {
+      logger.error('Erro ao imprimir via porta COM', {
+        error: error.message,
+        stderr: error.stderr,
+        stdout: error.stdout,
+        comPort,
+      });
+
+      try {
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+      } catch (e: any) {
+        logger.debug(`Erro ao limpar arquivo temporário: ${e.message}`);
+      }
+
+      return false;
+    }
+  }
+
+  /**
    * Imprimir usando spooler do sistema (impressoras normais)
    */
   private async printViaSystemPrinter(receiptText: string): Promise<boolean> {
@@ -462,12 +556,27 @@ export class PrinterService {
             return true;
           }
         } else if (config.printerType === 'thermal' && !config.printerIp && config.printerName) {
-          // Impressora térmica USB/COM: usar método do sistema com comandos ESC/POS
+          // Impressora térmica USB/COM: verificar se é porta COM ou nome de impressora
+          const printerName = config.printerName.trim().toUpperCase();
+          const isComPort = printerName.startsWith('COM') && /^COM\d+$/.test(printerName);
+          
           const receiptWithEscPos = ESCPOS_COMMANDS.INIT + 
                                     ESCPOS_COMMANDS.SILENT_MODE + 
                                     receiptText + 
                                     ESCPOS_COMMANDS.CUT;
-          const printed = await this.printViaSystemPrinter(receiptWithEscPos);
+          
+          let printed: boolean;
+          
+          if (isComPort) {
+            // Porta COM: usar método direto de escrita na porta
+            logger.info(`Imprimindo via porta COM: ${printerName}`);
+            printed = await this.printViaComPort(receiptWithEscPos, printerName);
+          } else {
+            // Nome de impressora: usar método do sistema
+            logger.info(`Imprimindo via impressora do sistema: ${config.printerName}`);
+            printed = await this.printViaSystemPrinter(receiptWithEscPos);
+          }
+          
           if (printed) {
             logger.info(`✅ Pedido ${order.id.slice(-8)} enviado para impressora térmica USB/COM: ${config.printerName}`);
             return true;
