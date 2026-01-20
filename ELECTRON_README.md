@@ -23,6 +23,8 @@ Interface gráfica completa para o Printer Service, facilitando configuração e
 ### 1. Instalar dependências
 
 ```bash
+git clone https://github.com/AbnerMCunha/printer-service.git
+printer-service
 npm install
 ```
 
