@@ -66,22 +66,28 @@ function validateConfig(config: Partial<Config>): void {
   // Validação condicional baseada no tipo de impressora
   if (config.printerType === 'thermal') {
     // Para térmicas: precisa de IP (rede) OU printerName (USB/COM)
-    // Verificar se ambos estão vazios ou undefined
-    const hasIp = config.printerIp && typeof config.printerIp === 'string' && config.printerIp.trim() !== '';
-    const hasName = config.printerName && typeof config.printerName === 'string' && config.printerName.trim() !== '';
+    // Normalizar valores: strings vazias devem ser tratadas como undefined
+    const printerIpValue = config.printerIp && config.printerIp.trim() !== '' ? config.printerIp.trim() : '';
+    const printerNameValue = config.printerName && config.printerName.trim() !== '' ? config.printerName.trim() : undefined;
+    
+    const hasIp = printerIpValue !== '';
+    const hasName = printerNameValue !== undefined && printerNameValue !== '';
     
     // Log de debug para ajudar a identificar problemas (só se não passar na validação)
     if (!hasIp && !hasName) {
-      logger.warn('Validação de impressora térmica falhou', {
+      logger.warn('❌ Validação de impressora térmica falhou', {
         printerType: config.printerType,
         printerIp: config.printerIp || '(vazio/undefined)',
+        printerIpRaw: process.env.PRINTER_IP || '(não definido no .env)',
         printerIpType: typeof config.printerIp,
         printerIpLength: config.printerIp ? config.printerIp.length : 0,
         printerName: config.printerName || '(vazio/undefined)',
+        printerNameRaw: process.env.PRINTER_NAME || '(não definido no .env)',
         printerNameType: typeof config.printerName,
         printerNameLength: config.printerName ? config.printerName.length : 0,
         hasIp,
         hasName,
+        envKeys: Object.keys(process.env).filter(k => k.startsWith('PRINTER_')),
       });
     }
     
@@ -102,6 +108,13 @@ function validateConfig(config: Partial<Config>): void {
   }
 }
 
+// Função auxiliar para limpar e validar strings do .env
+function cleanEnvString(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const cleaned = value.trim();
+  return cleaned === '' ? undefined : cleaned;
+}
+
 // Carregar configurações
 function loadConfig(): Config {
   const deviceId = process.env.DEVICE_ID || getOrCreateDeviceId();
@@ -109,16 +122,14 @@ function loadConfig(): Config {
   const config: Config = {
     apiUrl: process.env.API_URL || '',
     apiToken: process.env.API_TOKEN || '',
-    refreshToken: process.env.REFRESH_TOKEN,
-    adminEmail: process.env.ADMIN_EMAIL,
-    adminPassword: process.env.ADMIN_PASSWORD,
-    restaurantId: process.env.RESTAURANT_ID,
+    refreshToken: cleanEnvString(process.env.REFRESH_TOKEN),
+    adminEmail: cleanEnvString(process.env.ADMIN_EMAIL),
+    adminPassword: cleanEnvString(process.env.ADMIN_PASSWORD),
+    restaurantId: cleanEnvString(process.env.RESTAURANT_ID),
     printerType: (process.env.PRINTER_TYPE || 'thermal') as 'thermal' | 'system',
-    printerIp: (process.env.PRINTER_IP || '').trim(),
+    printerIp: cleanEnvString(process.env.PRINTER_IP) || '',
     printerPort: parseInt(process.env.PRINTER_PORT || '9100', 10),
-    printerName: process.env.PRINTER_NAME && process.env.PRINTER_NAME.trim() !== '' 
-      ? process.env.PRINTER_NAME.trim() 
-      : undefined,
+    printerName: cleanEnvString(process.env.PRINTER_NAME),
     httpPort: parseInt(process.env.HTTP_PORT || '3002', 10),
     pollingInterval: parseInt(process.env.POLLING_INTERVAL || '30000', 10),
     enablePolling: process.env.ENABLE_POLLING !== 'false', // Padrão: true

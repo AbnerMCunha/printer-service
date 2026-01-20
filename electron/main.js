@@ -254,10 +254,31 @@ function saveEnv(envData) {
   let content = '# Configuração do Printer Service\n';
   content += '# Gerado pelo App Electron\n\n';
 
+  // Log para debug
+  console.log('Salvando .env com dados:', Object.keys(envData));
+  if (envData.PRINTER_TYPE === 'thermal') {
+    console.log('Tipo: thermal');
+    console.log('PRINTER_IP:', envData.PRINTER_IP || '(não definido)');
+    console.log('PRINTER_NAME:', envData.PRINTER_NAME || '(não definido)');
+    console.log('PRINTER_PORT:', envData.PRINTER_PORT || '(não definido)');
+  }
+
   Object.entries(envData).forEach(([key, value]) => {
     // Ignorar valores undefined, null, string vazia ou apenas espaços
     if (value !== undefined && value !== null && value !== '' && String(value).trim() !== '') {
       content += `${key}=${String(value).trim()}\n`;
+    }
+  });
+
+  // Log do conteúdo final (sem valores sensíveis)
+  console.log('Conteúdo do .env (sem valores sensíveis):');
+  const lines = content.split('\n');
+  lines.forEach(line => {
+    if (line && !line.startsWith('#')) {
+      const [key] = line.split('=');
+      if (key && !['API_TOKEN', 'REFRESH_TOKEN', 'ADMIN_PASSWORD'].includes(key)) {
+        console.log(`  ${line}`);
+      }
     }
   });
 
