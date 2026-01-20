@@ -65,8 +65,9 @@ function validateConfig(config: Partial<Config>): void {
 
   // Validação condicional baseada no tipo de impressora
   if (config.printerType === 'thermal') {
-    if (!config.printerIp) {
-      missing.push('printerIp');
+    // Para térmicas: precisa de IP (rede) OU printerName (USB/COM)
+    if (!config.printerIp && !config.printerName) {
+      missing.push('printerIp (para rede) ou printerName (para USB/COM)');
     }
   } else if (config.printerType === 'system') {
     // Para impressoras do sistema, printerName é opcional (usa padrão)
@@ -112,9 +113,11 @@ function loadConfig(): Config {
   logger.info('Configurações carregadas', {
     apiUrl: config.apiUrl,
     printerType: config.printerType,
-    printerIp: config.printerType === 'thermal' ? config.printerIp : 'N/A',
-    printerPort: config.printerType === 'thermal' ? config.printerPort : 'N/A',
-    printerName: config.printerType === 'system' ? (config.printerName || 'padrão') : 'N/A',
+    printerIp: config.printerType === 'thermal' && config.printerIp ? config.printerIp : 'N/A',
+    printerPort: config.printerType === 'thermal' && config.printerIp ? config.printerPort : 'N/A',
+    printerName: config.printerType === 'thermal' && !config.printerIp ? (config.printerName || 'N/A') : 
+                 config.printerType === 'system' ? (config.printerName || 'padrão') : 'N/A',
+    connectionType: config.printerType === 'thermal' ? (config.printerIp ? 'Rede (TCP/IP)' : 'USB/COM') : 'Sistema',
     httpPort: config.httpPort,
     pollingInterval: config.pollingInterval,
     enablePolling: config.enablePolling,

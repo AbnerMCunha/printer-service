@@ -83,16 +83,23 @@ if "!PRINTER_TYPE!"=="" set PRINTER_TYPE=thermal
 
 if /i "!PRINTER_TYPE!"=="thermal" (
     echo.
-    set /p PRINTER_IP="IP da impressora termica (ex: 192.168.1.100): "
+    set /p PRINTER_IP="IP da impressora termica (deixe vazio para USB/COM): "
     if "!PRINTER_IP!"=="" (
-        echo [ERRO] IP da impressora e obrigatorio para impressoras termicas!
-        pause
-        exit /b 1
+        echo.
+        echo Impressora USB/COM detectada.
+        set /p PRINTER_NAME="Nome da impressora no sistema ou porta COM (ex: COM3 ou nome da impressora): "
+        if "!PRINTER_NAME!"=="" (
+            echo [ERRO] Nome da impressora ou IP e obrigatorio!
+            pause
+            exit /b 1
+        )
+        set PRINTER_PORT=
+    ) else (
+        echo.
+        set /p PRINTER_PORT="Porta da impressora [9100]: "
+        if "!PRINTER_PORT!"=="" set PRINTER_PORT=9100
+        set PRINTER_NAME=
     )
-    echo.
-    set /p PRINTER_PORT="Porta da impressora [9100]: "
-    if "!PRINTER_PORT!"=="" set PRINTER_PORT=9100
-    set PRINTER_NAME=
 ) else (
     echo.
     set /p PRINTER_NAME="Nome da impressora no sistema (deixe vazio para padrao): "

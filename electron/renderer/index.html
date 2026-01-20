@@ -71,19 +71,37 @@
             <div class="form-group">
               <label for="printerType">Tipo de Impressora *</label>
               <select id="printerType" name="PRINTER_TYPE" required>
-                <option value="thermal">Térmica (TCP/IP)</option>
+                <option value="thermal">Térmica</option>
                 <option value="system">Sistema (Spooler)</option>
               </select>
             </div>
 
             <div id="thermalConfig">
               <div class="form-group">
-                <label for="printerIp">IP da Impressora *</label>
-                <input type="text" id="printerIp" name="PRINTER_IP" placeholder="192.168.1.100">
+                <label for="thermalConnection">Tipo de Conexão *</label>
+                <select id="thermalConnection" name="THERMAL_CONNECTION">
+                  <option value="network">Rede (TCP/IP)</option>
+                  <option value="usb">USB/COM</option>
+                </select>
               </div>
-              <div class="form-group">
-                <label for="printerPort">Porta da Impressora</label>
-                <input type="number" id="printerPort" name="PRINTER_PORT" value="9100" placeholder="9100">
+              
+              <div id="networkConfig">
+                <div class="form-group">
+                  <label for="printerIp">IP da Impressora *</label>
+                  <input type="text" id="printerIp" name="PRINTER_IP" placeholder="192.168.1.100">
+                </div>
+                <div class="form-group">
+                  <label for="printerPort">Porta da Impressora</label>
+                  <input type="number" id="printerPort" name="PRINTER_PORT" value="9100" placeholder="9100">
+                </div>
+              </div>
+              
+              <div id="usbConfig" style="display: none;">
+                <div class="form-group">
+                  <label for="printerNameUsb">Nome da Impressora ou Porta COM *</label>
+                  <input type="text" id="printerNameUsb" name="PRINTER_NAME" placeholder="COM3 ou nome da impressora">
+                  <small>Ex: COM3, COM4, ou o nome exato da impressora no Windows</small>
+                </div>
               </div>
             </div>
 

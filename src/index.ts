@@ -77,8 +77,10 @@ async function main(): Promise<void> {
     logger.info(`API URL: ${config.apiUrl}`);
     if (config.printerType === 'system') {
       logger.info(`Impressora: Sistema (${config.printerName || 'padrão'})`);
+    } else if (config.printerIp) {
+      logger.info(`Impressora: Térmica Rede ${config.printerIp}:${config.printerPort}`);
     } else {
-      logger.info(`Impressora: Térmica ${config.printerIp}:${config.printerPort}`);
+      logger.info(`Impressora: Térmica USB/COM (${config.printerName || 'N/A'})`);
     }
     logger.info(`Intervalo de polling: ${config.pollingInterval}ms`);
     logger.info('========================================');

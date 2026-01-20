@@ -31,9 +31,22 @@ export class PrinterService {
   private maxConnectionAttempts = 3;
 
   /**
-   * Conectar à impressora via TCP/IP
+   * Conectar à impressora via TCP/IP ou verificar USB/COM
    */
   async connect(): Promise<boolean> {
+    // Se for térmica USB/COM (sem IP), não precisa conectar via socket
+    if (config.printerType === 'thermal' && !config.printerIp && config.printerName) {
+      this.isConnected = true;
+      logger.info(`Impressora térmica USB/COM configurada: ${config.printerName}`);
+      return true;
+    }
+
+    // Se for impressora do sistema, não precisa conectar via socket
+    if (config.printerType === 'system') {
+      this.isConnected = true;
+      return true;
+    }
+
     if (this.isConnected && this.socket && !this.socket.destroyed) {
       return true;
     }
@@ -404,7 +417,13 @@ export class PrinterService {
       return true;
     }
 
-    // Para impressoras térmicas, testar conexão TCP
+    // Para impressoras térmicas USB/COM, não precisa testar conexão TCP
+    if (config.printerType === 'thermal' && !config.printerIp && config.printerName) {
+      logger.info(`Impressora térmica USB/COM configurada: ${config.printerName} - teste de conexão não necessário`);
+      return true;
+    }
+
+    // Para impressoras térmicas via rede, testar conexão TCP
     const connected = await this.connect();
     if (connected) {
       try {
@@ -442,8 +461,19 @@ export class PrinterService {
             logger.info(`✅ Pedido ${order.id.slice(-8)} enviado para impressora do sistema`);
             return true;
           }
+        } else if (config.printerType === 'thermal' && !config.printerIp && config.printerName) {
+          // Impressora térmica USB/COM: usar método do sistema com comandos ESC/POS
+          const receiptWithEscPos = ESCPOS_COMMANDS.INIT + 
+                                    ESCPOS_COMMANDS.SILENT_MODE + 
+                                    receiptText + 
+                                    ESCPOS_COMMANDS.CUT;
+          const printed = await this.printViaSystemPrinter(receiptWithEscPos);
+          if (printed) {
+            logger.info(`✅ Pedido ${order.id.slice(-8)} enviado para impressora térmica USB/COM: ${config.printerName}`);
+            return true;
+          }
         } else {
-          // Impressora térmica: usar TCP/IP direto
+          // Impressora térmica via rede (TCP/IP): usar conexão direta
           if (!this.isConnected || !this.socket) {
             logger.warn('Impressora não conectada, tentando conectar...');
             const connected = await this.connect();
@@ -519,7 +549,11 @@ export class PrinterService {
     if (config.printerType === 'system') {
       return true;
     }
-    // Para térmicas, verificar conexão TCP
+    // Para térmicas USB/COM, sempre considerar conectado
+    if (config.printerType === 'thermal' && !config.printerIp && config.printerName) {
+      return true;
+    }
+    // Para térmicas via rede, verificar conexão TCP
     return this.isConnected && this.socket !== null && !this.socket.destroyed;
   }
 }
