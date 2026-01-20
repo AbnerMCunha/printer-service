@@ -1,0 +1,23 @@
+[Unit]
+Description=Serviço de Impressão Automática Cardapix
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/printer-service
+ExecStart=/usr/bin/node /home/pi/printer-service/dist/index.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Variáveis de ambiente (opcional, se não usar .env)
+# Environment="API_URL=https://api.cardapix.net"
+# Environment="API_TOKEN=seu-token-aqui"
+# Environment="PRINTER_IP=192.168.1.100"
+# Environment="PRINTER_PORT=9100"
+
+[Install]
+WantedBy=multi-user.target
+

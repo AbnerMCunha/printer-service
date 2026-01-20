@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Printer Service - Cardapix</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1>🖨️ Printer Service</h1>
+      <p class="subtitle">Serviço de Impressão Automática - Cardapix</p>
+    </header>
+
+    <!-- Status Bar -->
+    <div class="status-bar" id="statusBar">
+      <div class="status-indicator" id="statusIndicator">
+        <span class="status-dot"></span>
+        <span class="status-text">Verificando...</span>
+      </div>
+      <div class="status-actions">
+        <button id="btnStart" class="btn btn-primary" disabled>▶ Iniciar</button>
+        <button id="btnStop" class="btn btn-danger" disabled>⏹ Parar</button>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="config">⚙️ Configuração</button>
+      <button class="tab-btn" data-tab="monitor">📊 Monitoramento</button>
+      <button class="tab-btn" data-tab="logs">📝 Logs</button>
+    </div>
+
+    <!-- Tab Content -->
+    <div class="tab-content">
+      <!-- Config Tab -->
+      <div id="tabConfig" class="tab-pane active">
+        <form id="configForm">
+          <div class="form-section">
+            <h2>🔗 Conexão com API</h2>
+            <div class="form-group">
+              <label for="apiUrl">URL da API *</label>
+              <input type="text" id="apiUrl" name="API_URL" placeholder="https://api.cardapix.net" required>
+              <small>URL completa da API do backend</small>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h2>🔐 Autenticação</h2>
+            <div class="form-group">
+              <label for="adminEmail">Email do Admin *</label>
+              <input type="email" id="adminEmail" name="ADMIN_EMAIL" placeholder="admin@restaurant.com" required>
+            </div>
+            <div class="form-group">
+              <label for="adminPassword">Senha do Admin *</label>
+              <input type="password" id="adminPassword" name="ADMIN_PASSWORD" placeholder="••••••••" required>
+            </div>
+            <div class="form-group">
+              <label>
+                <input type="checkbox" id="autoLogin">
+                Usar login automático (recomendado)
+              </label>
+              <small>O serviço fará login automaticamente quando tokens expirarem</small>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h2>🖨️ Impressora</h2>
+            <div class="form-group">
+              <label for="printerType">Tipo de Impressora *</label>
+              <select id="printerType" name="PRINTER_TYPE" required>
+                <option value="thermal">Térmica (TCP/IP)</option>
+                <option value="system">Sistema (Spooler)</option>
+              </select>
+            </div>
+
+            <div id="thermalConfig">
+              <div class="form-group">
+                <label for="printerIp">IP da Impressora *</label>
+                <input type="text" id="printerIp" name="PRINTER_IP" placeholder="192.168.1.100">
+              </div>
+              <div class="form-group">
+                <label for="printerPort">Porta da Impressora</label>
+                <input type="number" id="printerPort" name="PRINTER_PORT" value="9100" placeholder="9100">
+              </div>
+            </div>
+
+            <div id="systemConfig" style="display: none;">
+              <div class="form-group">
+                <label for="printerName">Nome da Impressora</label>
+                <input type="text" id="printerName" name="PRINTER_NAME" placeholder="Deixe vazio para padrão">
+                <small>Nome exato da impressora no sistema</small>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h2>⚙️ Configurações Avançadas</h2>
+            <div class="form-group">
+              <label for="httpPort">Porta do Servidor HTTP</label>
+              <input type="number" id="httpPort" name="HTTP_PORT" value="3002" placeholder="3002">
+              <small>Porta onde o serviço HTTP local escutará</small>
+            </div>
+            <div class="form-group">
+              <label>
+                <input type="checkbox" id="enablePolling" name="ENABLE_POLLING" checked>
+                Habilitar Polling Automático
+              </label>
+              <small>Faz polling mesmo quando frontend não está aberto</small>
+            </div>
+            <div class="form-group">
+              <label for="pollingInterval">Intervalo de Polling (ms)</label>
+              <input type="number" id="pollingInterval" name="POLLING_INTERVAL" value="30000" placeholder="30000">
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">💾 Salvar Configuração</button>
+            <button type="button" id="btnTestConnection" class="btn btn-secondary">🔍 Testar Conexões</button>
+          </div>
+        </form>
+
+        <div id="deviceIdSection" class="info-box" style="display: none;">
+          <h3>📱 Device ID</h3>
+          <p>Copie este ID e configure no painel admin do Cardapix:</p>
+          <div class="device-id-display">
+            <code id="deviceIdValue"></code>
+            <button id="btnCopyDeviceId" class="btn btn-small">📋 Copiar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Monitor Tab -->
+      <div id="tabMonitor" class="tab-pane">
+        <div class="monitor-grid">
+          <div class="monitor-card">
+            <h3>📊 Status do Serviço</h3>
+            <div id="serviceStatusInfo" class="status-info">
+              <p>Carregando...</p>
+            </div>
+          </div>
+          <div class="monitor-card">
+            <h3>🔗 Conexão com API</h3>
+            <div id="apiStatusInfo" class="status-info">
+              <p>Verificando...</p>
+            </div>
+          </div>
+          <div class="monitor-card">
+            <h3>🖨️ Impressora</h3>
+            <div id="printerStatusInfo" class="status-info">
+              <p>Verificando...</p>
+            </div>
+          </div>
+          <div class="monitor-card">
+            <h3>📈 Estatísticas</h3>
+            <div id="statsInfo" class="status-info">
+              <p>Nenhuma estatística disponível</p>
+            </div>
+          </div>
+        </div>
+        <div class="refresh-controls">
+          <button id="btnRefreshStatus" class="btn btn-secondary">🔄 Atualizar Status</button>
+          <span class="auto-refresh">
+            <label>
+              <input type="checkbox" id="autoRefresh" checked>
+              Atualizar automaticamente (5s)
+            </label>
+          </span>
+        </div>
+      </div>
+
+      <!-- Logs Tab -->
+      <div id="tabLogs" class="tab-pane">
+        <div class="logs-controls">
+          <div class="logs-controls-left">
+            <button id="btnRefreshLogs" class="btn btn-secondary">🔄 Atualizar Logs</button>
+            <button id="btnCopyLogs" class="btn btn-secondary">📋 Copiar Logs</button>
+            <button id="btnClearLogs" class="btn btn-secondary">🗑️ Limpar Visualização</button>
+          </div>
+          <div class="logs-controls-right">
+            <div class="search-box">
+              <input type="text" id="logsSearch" placeholder="🔍 Buscar nos logs..." class="search-input">
+              <button id="btnClearSearch" class="btn btn-small" style="display: none;">✕</button>
+            </div>
+            <label>
+              <input type="checkbox" id="autoScrollLogs" checked>
+              Auto-scroll
+            </label>
+          </div>
+        </div>
+        <div id="logsContainer" class="logs-container">
+          <p class="logs-placeholder">Carregando logs...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
+

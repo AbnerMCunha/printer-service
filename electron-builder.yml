@@ -1,0 +1,31 @@
+appId: com.cardapix.printer-service
+productName: Printer Service - Cardapix
+directories:
+  output: release
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+  - node_modules/**/*
+  - "!node_modules/**/*.{md,ts}"
+  - "!**/*.{ts,map}"
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: assets/icon.ico
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
+mac:
+  target: dmg
+  category: public.app-category.utilities
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
