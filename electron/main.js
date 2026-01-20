@@ -307,6 +307,89 @@ function readDeviceId() {
   return fs.readFileSync(deviceIdPath, 'utf-8').trim();
 }
 
+// Funções para gerenciar auto-start
+function getAutoStartStatus() {
+  try {
+    const settings = app.getLoginItemSettings();
+    return {
+      enabled: settings.openAtLogin,
+      openAsHidden: settings.openAsHidden || false
+    };
+  } catch (error) {
+    return {
+      enabled: false,
+      error: error.message
+    };
+  }
+}
+
+function setupTaskScheduler() {
+  return new Promise((resolve) => {
+    // Só funciona no Windows
+    if (os.platform() !== 'win32') {
+      resolve({ success: false, error: 'Task Scheduler só está disponível no Windows' });
+      return;
+    }
+
+    try {
+      const scriptPath = path.join(__dirname, '../scripts/setup-autostart.ps1');
+      
+      if (!fs.existsSync(scriptPath)) {
+        resolve({ success: false, error: 'Script setup-autostart.ps1 não encontrado' });
+        return;
+      }
+
+      // Executar script PowerShell
+      exec(
+        `powershell.exe -ExecutionPolicy Bypass -File "${scriptPath}"`,
+        { cwd: path.join(__dirname, '..') },
+        (error, stdout, stderr) => {
+          if (error) {
+            console.error('Erro ao configurar Task Scheduler:', error);
+            resolve({ success: false, error: error.message });
+            return;
+          }
+
+          if (stderr && !stderr.includes('✅')) {
+            console.warn('Aviso ao configurar Task Scheduler:', stderr);
+          }
+
+          resolve({ success: true, message: 'Task Scheduler configurado' });
+        }
+      );
+    } catch (error) {
+      console.error('Erro ao configurar Task Scheduler:', error);
+      resolve({ success: false, error: error.message });
+    }
+  });
+}
+
+async function setAutoStart(enabled) {
+  try {
+    // Configurar auto-start do Electron
+    app.setLoginItemSettings({
+      openAtLogin: enabled,
+      openAsHidden: false, // Pode mudar para true se quiser iniciar minimizado
+      name: 'Printer Service - Cardapix',
+      path: process.execPath,
+      args: []
+    });
+
+    // Se habilitando, também configurar Task Scheduler para garantir que o serviço inicie
+    if (enabled && os.platform() === 'win32') {
+      const taskResult = await setupTaskScheduler();
+      if (!taskResult.success) {
+        console.warn('Não foi possível configurar Task Scheduler:', taskResult.error);
+        // Não falhar, apenas avisar - o Electron auto-start ainda funcionará
+      }
+    }
+
+    return { success: true, enabled };
+  } catch (error) {
+    return { success: false, error: error.message, enabled: false };
+  }
+}
+
 // Handlers IPC
 ipcMain.handle('start-service', () => {
   return startService();
@@ -354,6 +437,15 @@ ipcMain.handle('select-folder', async () => {
     properties: ['openDirectory'],
   });
   return result;
+});
+
+// Handlers para auto-start
+ipcMain.handle('get-auto-start-status', () => {
+  return getAutoStartStatus();
+});
+
+ipcMain.handle('set-auto-start', (event, enabled) => {
+  return setAutoStart(enabled);
 });
 
 // Quando app estiver pronto

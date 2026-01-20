@@ -212,6 +212,31 @@ echo [OK] Projeto compilado!
 echo.
 
 echo ============================================
+echo   Configurando Auto-Start
+echo ============================================
+echo.
+set /p ENABLE_AUTOSTART="Deseja configurar para iniciar automaticamente ao ligar o PC? (S/n) [S]: "
+if /i "!ENABLE_AUTOSTART!"=="" set ENABLE_AUTOSTART=s
+if /i "!ENABLE_AUTOSTART!"=="s" (
+    echo.
+    echo Configurando Task Scheduler...
+    powershell.exe -ExecutionPolicy Bypass -File "%~dp0scripts\setup-autostart.ps1"
+    if %errorlevel% equ 0 (
+        echo [OK] Auto-start configurado com sucesso!
+    ) else (
+        echo [AVISO] Nao foi possivel configurar auto-start automaticamente.
+        echo         Voce pode configurar manualmente depois executando:
+        echo         powershell.exe -ExecutionPolicy Bypass -File scripts\setup-autostart.ps1
+    )
+    echo.
+) else (
+    echo Auto-start nao configurado.
+    echo Para configurar depois, execute:
+    echo   powershell.exe -ExecutionPolicy Bypass -File scripts\setup-autostart.ps1
+    echo.
+)
+
+echo ============================================
 echo   Configuracao Concluida!
 echo ============================================
 echo.

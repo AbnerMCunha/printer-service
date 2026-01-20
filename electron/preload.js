@@ -28,6 +28,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text),
   clearLogs: () => ipcRenderer.invoke('clear-logs'),
 
+  // Auto-start
+  getAutoStartStatus: () => ipcRenderer.invoke('get-auto-start-status'),
+  setAutoStart: (enabled) => ipcRenderer.invoke('set-auto-start', enabled),
+
   // Remover listeners
   removeAllListeners: (channel) => {
     ipcRenderer.removeAllListeners(channel);

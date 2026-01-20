@@ -13,7 +13,8 @@
 const axios = require('axios');
 const readline = require('readline');
 
-const API_URL = process.env.API_URL || 'http://localhost:3001';
+const API_URL = "https://cardapix-backend-production.up.railway.app" 
+//process.env.API_URL || 'http://localhost:3001';
 
 const rl = readline.createInterface({
   input: process.stdin,

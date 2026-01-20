@@ -83,6 +83,14 @@ function initializeConfigForm() {
       alert('Device ID copiado para a área de transferência!');
     });
   });
+
+  // Auto-start checkbox
+  const autoStartCheckbox = document.getElementById('autoStartEnabled');
+  if (autoStartCheckbox) {
+    autoStartCheckbox.addEventListener('change', async () => {
+      await saveAutoStartStatus();
+    });
+  }
 }
 
 async function loadConfiguration() {
@@ -113,6 +121,9 @@ async function loadConfiguration() {
       document.getElementById('deviceIdValue').textContent = deviceId;
       document.getElementById('deviceIdSection').style.display = 'block';
     }
+
+    // Carregar status do auto-start
+    await loadAutoStartStatus();
   } catch (error) {
     console.error('Erro ao carregar configuração:', error);
   }
@@ -154,6 +165,82 @@ async function saveConfiguration() {
   } catch (error) {
     console.error('Erro ao salvar:', error);
     alert('❌ Erro ao salvar configuração: ' + error.message);
+  }
+}
+
+// ========== AUTO-START ==========
+async function loadAutoStartStatus() {
+  try {
+    const status = await window.electronAPI.getAutoStartStatus();
+    const checkbox = document.getElementById('autoStartEnabled');
+    const statusBox = document.getElementById('autoStartStatus');
+    const statusText = document.getElementById('autoStartStatusText');
+    
+    if (checkbox) {
+      checkbox.checked = status.enabled || false;
+    }
+    
+    if (statusBox && statusText) {
+      if (status.enabled) {
+        statusBox.style.display = 'block';
+        statusBox.className = 'info-box';
+        statusText.innerHTML = '✅ <strong>Auto-start habilitado!</strong> O aplicativo iniciará automaticamente ao fazer login.';
+      } else if (status.error) {
+        statusBox.style.display = 'block';
+        statusBox.className = 'info-box';
+        statusText.innerHTML = '⚠️ <strong>Erro ao verificar status:</strong> ' + status.error;
+      } else {
+        statusBox.style.display = 'none';
+      }
+    }
+  } catch (error) {
+    console.error('Erro ao carregar status do auto-start:', error);
+  }
+}
+
+async function saveAutoStartStatus() {
+  try {
+    const checkbox = document.getElementById('autoStartEnabled');
+    if (!checkbox) return;
+    
+    const enabled = checkbox.checked;
+    const statusBox = document.getElementById('autoStartStatus');
+    const statusText = document.getElementById('autoStartStatusText');
+    
+    // Mostrar loading
+    if (statusBox && statusText) {
+      statusBox.style.display = 'block';
+      statusBox.className = 'info-box';
+      statusText.innerHTML = '⏳ Configurando auto-start...';
+    }
+    
+    const result = await window.electronAPI.setAutoStart(enabled);
+    
+    if (result.success) {
+      if (statusBox && statusText) {
+        if (enabled) {
+          statusBox.className = 'info-box';
+          statusText.innerHTML = '✅ <strong>Auto-start habilitado!</strong> O aplicativo iniciará automaticamente ao fazer login no Windows.';
+        } else {
+          statusBox.className = 'info-box';
+          statusText.innerHTML = 'ℹ️ <strong>Auto-start desabilitado.</strong> O aplicativo não iniciará automaticamente.';
+        }
+      }
+    } else {
+      checkbox.checked = !enabled; // Reverter checkbox
+      if (statusBox && statusText) {
+        statusBox.className = 'info-box';
+        statusText.innerHTML = '❌ <strong>Erro ao configurar auto-start:</strong> ' + (result.error || 'Erro desconhecido');
+      }
+      alert('❌ Erro ao configurar auto-start: ' + (result.error || 'Erro desconhecido'));
+    }
+  } catch (error) {
+    console.error('Erro ao salvar auto-start:', error);
+    const checkbox = document.getElementById('autoStartEnabled');
+    if (checkbox) {
+      checkbox.checked = !checkbox.checked; // Reverter checkbox
+    }
+    alert('❌ Erro ao configurar auto-start: ' + error.message);
   }
 }
 
@@ -217,9 +304,43 @@ async function startService() {
   const btnStop = document.getElementById('btnStop');
 
   btnStart.disabled = true;
-  btnStart.textContent = '⏳ Iniciando...';
+  btnStart.textContent = '⏳ Salvando e iniciando...';
 
   try {
+    // Salvar configurações antes de iniciar
+    const form = document.getElementById('configForm');
+    if (form) {
+      const formData = new FormData(form);
+      const envData = {};
+
+      // Coletar dados do formulário
+      for (const [key, value] of formData.entries()) {
+        envData[key] = value;
+      }
+
+      // Adicionar checkboxes
+      const checkboxes = form.querySelectorAll('input[type="checkbox"]');
+      checkboxes.forEach((cb) => {
+        if (cb.name) {
+          envData[cb.name] = cb.checked ? 'true' : 'false';
+        }
+      });
+
+      // Salvar configuração
+      const saveResult = await window.electronAPI.saveEnv(envData);
+      if (!saveResult.success) {
+        alert('⚠️ Aviso: Não foi possível salvar as configurações. O serviço será iniciado com as configurações anteriores.');
+      }
+    }
+
+    // Salvar auto-start se configurado
+    const autoStartCheckbox = document.getElementById('autoStartEnabled');
+    if (autoStartCheckbox) {
+      await saveAutoStartStatus();
+    }
+
+    // Iniciar serviço
+    btnStart.textContent = '⏳ Iniciando...';
     const result = await window.electronAPI.startService();
     if (result.success) {
       updateServiceStatus(true);
@@ -282,6 +403,30 @@ async function checkInitialStatus() {
   try {
     const status = await window.electronAPI.checkServiceStatus();
     updateServiceStatus(status.running);
+    
+    // Sempre tentar iniciar o serviço se não estiver rodando e estiver configurado
+    // Isso garante que o serviço inicie mesmo se o Task Scheduler não funcionar
+    if (!status.running && status.configured) {
+      // Aguardar um pouco para garantir que a interface está pronta
+      setTimeout(async () => {
+        try {
+          console.log('🚀 Iniciando serviço automaticamente...');
+          const result = await window.electronAPI.startService();
+          if (result.success) {
+            console.log('✅ Serviço iniciado automaticamente com sucesso');
+            updateServiceStatus(true);
+          } else {
+            console.warn('⚠️ Não foi possível iniciar serviço automaticamente:', result.message);
+          }
+        } catch (error) {
+          console.error('Erro ao iniciar serviço automaticamente:', error);
+        }
+      }, 2000); // 2 segundos de delay para garantir que tudo está carregado
+    } else if (status.running) {
+      console.log('✅ Serviço já está em execução');
+    } else if (!status.configured) {
+      console.log('ℹ️ Serviço não configurado ainda');
+    }
   } catch (error) {
     console.error('Erro ao verificar status:', error);
   }
