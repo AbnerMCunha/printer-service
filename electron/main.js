@@ -255,8 +255,9 @@ function saveEnv(envData) {
   content += '# Gerado pelo App Electron\n\n';
 
   Object.entries(envData).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') {
-      content += `${key}=${value}\n`;
+    // Ignorar valores undefined, null, string vazia ou apenas espaços
+    if (value !== undefined && value !== null && value !== '' && String(value).trim() !== '') {
+      content += `${key}=${String(value).trim()}\n`;
     }
   });
 

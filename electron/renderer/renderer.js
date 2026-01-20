@@ -185,9 +185,51 @@ async function saveConfiguration() {
     const formData = new FormData(form);
     const envData = {};
 
-    // Coletar dados do formulário
+    // Limpar campos não usados baseado no tipo de conexão térmica ANTES de coletar
+    const thermalConnection = document.getElementById('thermalConnection');
+    const printerType = formData.get('PRINTER_TYPE');
+    
+    // Coletar dados do formulário (filtrar valores vazios e campos ocultos)
     for (const [key, value] of formData.entries()) {
-      envData[key] = value;
+      // Ignorar THERMAL_CONNECTION (é apenas para UI)
+      if (key === 'THERMAL_CONNECTION') {
+        continue;
+      }
+      
+      // Para impressora térmica, filtrar campos baseado no tipo de conexão
+      if (printerType === 'thermal' && thermalConnection) {
+        const connectionType = thermalConnection.value;
+        
+        // Se for rede, ignorar PRINTER_NAME de campos USB
+        if (connectionType === 'network') {
+          if (key === 'PRINTER_NAME') {
+            const printerNameUsb = document.getElementById('printerNameUsb');
+            if (printerNameUsb && formData.get('PRINTER_NAME') === printerNameUsb.value) {
+              continue; // Ignorar PRINTER_NAME do campo USB
+            }
+          }
+        }
+        
+        // Se for USB/COM, ignorar PRINTER_IP e PRINTER_PORT
+        if (connectionType === 'usb') {
+          if (key === 'PRINTER_IP' || key === 'PRINTER_PORT') {
+            continue;
+          }
+          // Garantir que PRINTER_NAME vem do campo USB
+          if (key === 'PRINTER_NAME') {
+            const printerNameUsb = document.getElementById('printerNameUsb');
+            if (printerNameUsb && printerNameUsb.value && printerNameUsb.value.trim() !== '') {
+              envData[key] = printerNameUsb.value.trim();
+            }
+            continue;
+          }
+        }
+      }
+      
+      // Ignorar valores vazios ou apenas espaços
+      if (value && String(value).trim() !== '') {
+        envData[key] = String(value).trim();
+      }
     }
 
     // Adicionar checkboxes
@@ -198,28 +240,15 @@ async function saveConfiguration() {
       }
     });
 
-    // Limpar campos não usados baseado no tipo de conexão térmica
-    const thermalConnection = document.getElementById('thermalConnection');
-    if (thermalConnection && envData.PRINTER_TYPE === 'thermal') {
-      if (thermalConnection.value === 'network') {
-        // Rede: limpar PRINTER_NAME, manter PRINTER_IP e PRINTER_PORT
-        delete envData.PRINTER_NAME;
-        const printerNameUsb = document.getElementById('printerNameUsb');
-        if (printerNameUsb) {
-          delete envData[printerNameUsb.name];
-        }
-      } else {
-        // USB/COM: limpar PRINTER_IP e PRINTER_PORT, manter PRINTER_NAME
-        delete envData.PRINTER_IP;
-        delete envData.PRINTER_PORT;
-        // Copiar valor de printerNameUsb para PRINTER_NAME se existir
-        const printerNameUsb = document.getElementById('printerNameUsb');
-        if (printerNameUsb && printerNameUsb.value) {
-          envData.PRINTER_NAME = printerNameUsb.value;
-        }
+    // Garantir que PRINTER_NAME está correto para USB/COM
+    if (printerType === 'thermal' && thermalConnection && thermalConnection.value === 'usb') {
+      const printerNameUsb = document.getElementById('printerNameUsb');
+      if (printerNameUsb && printerNameUsb.value && printerNameUsb.value.trim() !== '') {
+        envData.PRINTER_NAME = printerNameUsb.value.trim();
       }
-      // Remover THERMAL_CONNECTION do env (é apenas para UI)
-      delete envData.THERMAL_CONNECTION;
+      // Garantir que PRINTER_IP e PRINTER_PORT não estão presentes
+      delete envData.PRINTER_IP;
+      delete envData.PRINTER_PORT;
     }
 
     // Salvar

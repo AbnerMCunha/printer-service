@@ -66,7 +66,26 @@ function validateConfig(config: Partial<Config>): void {
   // Validação condicional baseada no tipo de impressora
   if (config.printerType === 'thermal') {
     // Para térmicas: precisa de IP (rede) OU printerName (USB/COM)
-    if (!config.printerIp && !config.printerName) {
+    // Verificar se ambos estão vazios ou undefined
+    const hasIp = config.printerIp && typeof config.printerIp === 'string' && config.printerIp.trim() !== '';
+    const hasName = config.printerName && typeof config.printerName === 'string' && config.printerName.trim() !== '';
+    
+    // Log de debug para ajudar a identificar problemas (só se não passar na validação)
+    if (!hasIp && !hasName) {
+      logger.warn('Validação de impressora térmica falhou', {
+        printerType: config.printerType,
+        printerIp: config.printerIp || '(vazio/undefined)',
+        printerIpType: typeof config.printerIp,
+        printerIpLength: config.printerIp ? config.printerIp.length : 0,
+        printerName: config.printerName || '(vazio/undefined)',
+        printerNameType: typeof config.printerName,
+        printerNameLength: config.printerName ? config.printerName.length : 0,
+        hasIp,
+        hasName,
+      });
+    }
+    
+    if (!hasIp && !hasName) {
       missing.push('printerIp (para rede) ou printerName (para USB/COM)');
     }
   } else if (config.printerType === 'system') {
@@ -95,9 +114,11 @@ function loadConfig(): Config {
     adminPassword: process.env.ADMIN_PASSWORD,
     restaurantId: process.env.RESTAURANT_ID,
     printerType: (process.env.PRINTER_TYPE || 'thermal') as 'thermal' | 'system',
-    printerIp: process.env.PRINTER_IP || '',
+    printerIp: (process.env.PRINTER_IP || '').trim(),
     printerPort: parseInt(process.env.PRINTER_PORT || '9100', 10),
-    printerName: process.env.PRINTER_NAME,
+    printerName: process.env.PRINTER_NAME && process.env.PRINTER_NAME.trim() !== '' 
+      ? process.env.PRINTER_NAME.trim() 
+      : undefined,
     httpPort: parseInt(process.env.HTTP_PORT || '3002', 10),
     pollingInterval: parseInt(process.env.POLLING_INTERVAL || '30000', 10),
     enablePolling: process.env.ENABLE_POLLING !== 'false', // Padrão: true
