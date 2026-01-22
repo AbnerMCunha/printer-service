@@ -213,12 +213,23 @@ async function saveConfiguration() {
           continue; // Ignorar campos de rede quando USB está selecionado
         }
         
-        // Se rede está visível, ignorar PRINTER_NAME (vem do campo USB que está oculto)
+        // Se USB está visível, não coletar PRINTER_NAME aqui (será coletado depois diretamente do campo)
+        if (isUsbVisible && key === 'PRINTER_NAME') {
+          continue; // Será coletado diretamente do campo printerNameUsb na seção de limpeza final
+        }
+        
+        // Se rede está visível, ignorar PRINTER_NAME que vem do campo USB (que está oculto)
         if (isNetworkVisible && key === 'PRINTER_NAME') {
-          // Verificar se este PRINTER_NAME vem do campo USB (que está oculto)
           const printerNameUsb = document.getElementById('printerNameUsb');
           if (printerNameUsb && !isUsbVisible) {
-            continue; // Ignorar PRINTER_NAME do campo USB quando rede está selecionado
+            // Verificar se o input atual é o campo USB
+            const allPrinterNameInputs = form.querySelectorAll(`[name="${key}"]`);
+            const isFromUsbField = Array.from(allPrinterNameInputs).some(
+              input => input.id === 'printerNameUsb' && input.value === value
+            );
+            if (isFromUsbField) {
+              continue; // Ignorar PRINTER_NAME do campo USB quando rede está selecionado
+            }
           }
         }
       }
@@ -241,11 +252,17 @@ async function saveConfiguration() {
     if (printerType === 'thermal' && connectionType === 'usb') {
       // USB/COM: garantir PRINTER_NAME e remover PRINTER_IP e PRINTER_PORT
       const printerNameUsb = document.getElementById('printerNameUsb');
-      if (printerNameUsb && printerNameUsb.value && printerNameUsb.value.trim() !== '') {
-        envData.PRINTER_NAME = printerNameUsb.value.trim();
-        console.log('Configuração USB/COM: salvando PRINTER_NAME =', envData.PRINTER_NAME);
+      if (printerNameUsb) {
+        const printerNameValue = printerNameUsb.value ? printerNameUsb.value.trim() : '';
+        if (printerNameValue !== '') {
+          envData.PRINTER_NAME = printerNameValue;
+          console.log('Configuração USB/COM: salvando PRINTER_NAME =', envData.PRINTER_NAME);
+        } else {
+          console.warn('⚠️ Campo PRINTER_NAME vazio para USB/COM');
+          // Mesmo vazio, garantir que não tenha PRINTER_IP ou PRINTER_PORT
+        }
       } else {
-        console.warn('⚠️ Campo PRINTER_NAME vazio para USB/COM');
+        console.warn('⚠️ Campo printerNameUsb não encontrado');
       }
       // Remover explicitamente PRINTER_IP e PRINTER_PORT
       delete envData.PRINTER_IP;
@@ -254,8 +271,9 @@ async function saveConfiguration() {
     } else if (printerType === 'thermal' && connectionType === 'network') {
       // Rede: garantir PRINTER_IP e remover PRINTER_NAME (se veio do campo USB)
       const printerNameUsb = document.getElementById('printerNameUsb');
-      if (printerNameUsb && envData.PRINTER_NAME === printerNameUsb.value) {
+      if (printerNameUsb && envData.PRINTER_NAME && envData.PRINTER_NAME === printerNameUsb.value.trim()) {
         delete envData.PRINTER_NAME;
+        console.log('Configuração Rede: removendo PRINTER_NAME do campo USB');
       }
     }
 
@@ -418,15 +436,65 @@ async function startService() {
   btnStart.textContent = '⏳ Salvando e iniciando...';
 
   try {
-    // Salvar configurações antes de iniciar
+    // Salvar configurações antes de iniciar (usar a mesma lógica de saveConfiguration)
     const form = document.getElementById('configForm');
     if (form) {
       const formData = new FormData(form);
       const envData = {};
 
-      // Coletar dados do formulário
+      // Obter tipo de impressora e conexão
+      const printerType = formData.get('PRINTER_TYPE');
+      const thermalConnection = document.getElementById('thermalConnection');
+      const connectionType = thermalConnection ? thermalConnection.value : null;
+      
+      // Verificar quais campos estão visíveis
+      const networkConfig = document.getElementById('networkConfig');
+      const usbConfig = document.getElementById('usbConfig');
+      const systemConfig = document.getElementById('systemConfig');
+      
+      const isNetworkVisible = networkConfig && networkConfig.style.display !== 'none';
+      const isUsbVisible = usbConfig && usbConfig.style.display !== 'none';
+      const isSystemVisible = systemConfig && systemConfig.style.display !== 'none';
+
+      // Coletar dados do formulário (filtrar valores vazios e campos ocultos)
       for (const [key, value] of formData.entries()) {
-        envData[key] = value;
+        // Ignorar THERMAL_CONNECTION (é apenas para UI)
+        if (key === 'THERMAL_CONNECTION') {
+          continue;
+        }
+        
+        // Para impressora térmica, filtrar campos baseado no tipo de conexão VISÍVEL
+        if (printerType === 'thermal') {
+          // Se USB/COM está visível, ignorar campos de rede
+          if (isUsbVisible && (key === 'PRINTER_IP' || key === 'PRINTER_PORT')) {
+            continue; // Ignorar campos de rede quando USB está selecionado
+          }
+          
+          // Se USB está visível, não coletar PRINTER_NAME aqui (será coletado depois diretamente do campo)
+          if (isUsbVisible && key === 'PRINTER_NAME') {
+            continue; // Será coletado diretamente do campo printerNameUsb na seção de limpeza final
+          }
+          
+          // Se rede está visível, ignorar PRINTER_NAME que vem do campo USB (que está oculto)
+          if (isNetworkVisible && key === 'PRINTER_NAME') {
+            const printerNameUsb = document.getElementById('printerNameUsb');
+            if (printerNameUsb && !isUsbVisible) {
+              // Verificar se o input atual é o campo USB
+              const allPrinterNameInputs = form.querySelectorAll(`[name="${key}"]`);
+              const isFromUsbField = Array.from(allPrinterNameInputs).some(
+                input => input.id === 'printerNameUsb' && input.value === value
+              );
+              if (isFromUsbField) {
+                continue; // Ignorar PRINTER_NAME do campo USB quando rede está selecionado
+              }
+            }
+          }
+        }
+        
+        // Ignorar valores vazios ou apenas espaços
+        if (value && String(value).trim() !== '') {
+          envData[key] = String(value).trim();
+        }
       }
 
       // Adicionar checkboxes
@@ -436,6 +504,34 @@ async function startService() {
           envData[cb.name] = cb.checked ? 'true' : 'false';
         }
       });
+
+      // Limpeza final baseada no tipo de conexão (mesma lógica de saveConfiguration)
+      if (printerType === 'thermal' && connectionType === 'usb') {
+        // USB/COM: garantir PRINTER_NAME e remover PRINTER_IP e PRINTER_PORT
+        const printerNameUsb = document.getElementById('printerNameUsb');
+        if (printerNameUsb) {
+          const printerNameValue = printerNameUsb.value ? printerNameUsb.value.trim() : '';
+          if (printerNameValue !== '') {
+            envData.PRINTER_NAME = printerNameValue;
+            console.log('Configuração USB/COM (Iniciar): salvando PRINTER_NAME =', envData.PRINTER_NAME);
+          } else {
+            console.warn('⚠️ Campo PRINTER_NAME vazio para USB/COM (Iniciar)');
+          }
+        } else {
+          console.warn('⚠️ Campo printerNameUsb não encontrado (Iniciar)');
+        }
+        // Remover explicitamente PRINTER_IP e PRINTER_PORT
+        delete envData.PRINTER_IP;
+        delete envData.PRINTER_PORT;
+        console.log('Configuração USB/COM (Iniciar): removendo PRINTER_IP e PRINTER_PORT');
+      } else if (printerType === 'thermal' && connectionType === 'network') {
+        // Rede: garantir PRINTER_IP e remover PRINTER_NAME (se veio do campo USB)
+        const printerNameUsb = document.getElementById('printerNameUsb');
+        if (printerNameUsb && envData.PRINTER_NAME && envData.PRINTER_NAME === printerNameUsb.value.trim()) {
+          delete envData.PRINTER_NAME;
+          console.log('Configuração Rede (Iniciar): removendo PRINTER_NAME do campo USB');
+        }
+      }
 
       // Salvar configuração
       const saveResult = await window.electronAPI.saveEnv(envData);
