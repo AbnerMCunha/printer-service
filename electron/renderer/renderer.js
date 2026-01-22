@@ -3,6 +3,48 @@ let currentTab = 'config';
 let autoRefreshInterval = null;
 let autoScrollLogs = true;
 
+// ========== NOTIFICAÇÕES ==========
+function showNotification(message, type = 'info', duration = 3000) {
+  const container = document.getElementById('notificationContainer');
+  if (!container) {
+    // Fallback para console se container não existir
+    console.log(`[${type.toUpperCase()}] ${message}`);
+    return;
+  }
+
+  const notification = document.createElement('div');
+  notification.className = `notification ${type}`;
+
+  const icons = {
+    success: '✅',
+    error: '❌',
+    warning: '⚠️',
+    info: 'ℹ️'
+  };
+
+  notification.innerHTML = `
+    <span class="notification-icon">${icons[type] || icons.info}</span>
+    <span class="notification-message">${escapeHtml(message)}</span>
+    <button class="notification-close" onclick="this.parentElement.remove()">×</button>
+  `;
+
+  container.appendChild(notification);
+
+  // Remover após duração especificada
+  setTimeout(() => {
+    if (notification.parentElement) {
+      notification.style.animation = 'fadeOut 0.3s ease-in';
+      setTimeout(() => {
+        if (notification.parentElement) {
+          notification.remove();
+        }
+      }, 300);
+    }
+  }, duration);
+
+  return notification;
+}
+
 // Inicialização
 document.addEventListener('DOMContentLoaded', async () => {
   initializeTabs();
@@ -109,7 +151,7 @@ function initializeConfigForm() {
   document.getElementById('btnCopyDeviceId').addEventListener('click', () => {
     const deviceId = document.getElementById('deviceIdValue').textContent;
     navigator.clipboard.writeText(deviceId).then(() => {
-      alert('Device ID copiado para a área de transferência!');
+      showNotification('Device ID copiado para a área de transferência!', 'success');
     });
   });
 
@@ -179,108 +221,122 @@ async function loadConfiguration() {
   }
 }
 
-async function saveConfiguration() {
-  try {
-    const form = document.getElementById('configForm');
-    const formData = new FormData(form);
-    const envData = {};
+// Função auxiliar para coletar e processar dados do formulário
+function collectFormData() {
+  const form = document.getElementById('configForm');
+  if (!form) {
+    return null;
+  }
 
-    // Obter tipo de impressora e conexão
-    const printerType = formData.get('PRINTER_TYPE');
-    const thermalConnection = document.getElementById('thermalConnection');
-    const connectionType = thermalConnection ? thermalConnection.value : null;
+  const formData = new FormData(form);
+  const envData = {};
+
+  // Obter tipo de impressora e conexão
+  const printerType = formData.get('PRINTER_TYPE');
+  const thermalConnection = document.getElementById('thermalConnection');
+  const connectionType = thermalConnection ? thermalConnection.value : null;
+  
+  // Verificar quais campos estão visíveis
+  const networkConfig = document.getElementById('networkConfig');
+  const usbConfig = document.getElementById('usbConfig');
+  const systemConfig = document.getElementById('systemConfig');
+  
+  const isNetworkVisible = networkConfig && networkConfig.style.display !== 'none';
+  const isUsbVisible = usbConfig && usbConfig.style.display !== 'none';
+  const isSystemVisible = systemConfig && systemConfig.style.display !== 'none';
+
+  // Coletar dados do formulário (filtrar valores vazios e campos ocultos)
+  for (const [key, value] of formData.entries()) {
+    // Ignorar THERMAL_CONNECTION (é apenas para UI)
+    if (key === 'THERMAL_CONNECTION') {
+      continue;
+    }
     
-    // Verificar quais campos estão visíveis
-    const networkConfig = document.getElementById('networkConfig');
-    const usbConfig = document.getElementById('usbConfig');
-    const systemConfig = document.getElementById('systemConfig');
-    
-    const isNetworkVisible = networkConfig && networkConfig.style.display !== 'none';
-    const isUsbVisible = usbConfig && usbConfig.style.display !== 'none';
-    const isSystemVisible = systemConfig && systemConfig.style.display !== 'none';
-    
-    // Coletar dados do formulário (filtrar valores vazios e campos ocultos)
-    for (const [key, value] of formData.entries()) {
-      // Ignorar THERMAL_CONNECTION (é apenas para UI)
-      if (key === 'THERMAL_CONNECTION') {
-        continue;
+    // Para impressora térmica, filtrar campos baseado no tipo de conexão VISÍVEL
+    if (printerType === 'thermal') {
+      // Se USB/COM está visível, ignorar campos de rede
+      if (isUsbVisible && (key === 'PRINTER_IP' || key === 'PRINTER_PORT')) {
+        continue; // Ignorar campos de rede quando USB está selecionado
       }
       
-      // Para impressora térmica, filtrar campos baseado no tipo de conexão VISÍVEL
-      if (printerType === 'thermal') {
-        // Se USB/COM está visível, ignorar campos de rede
-        if (isUsbVisible && (key === 'PRINTER_IP' || key === 'PRINTER_PORT')) {
-          continue; // Ignorar campos de rede quando USB está selecionado
-        }
-        
-        // Se USB está visível, não coletar PRINTER_NAME aqui (será coletado depois diretamente do campo)
-        if (isUsbVisible && key === 'PRINTER_NAME') {
-          continue; // Será coletado diretamente do campo printerNameUsb na seção de limpeza final
-        }
-        
-        // Se rede está visível, ignorar PRINTER_NAME que vem do campo USB (que está oculto)
-        if (isNetworkVisible && key === 'PRINTER_NAME') {
-          const printerNameUsb = document.getElementById('printerNameUsb');
-          if (printerNameUsb && !isUsbVisible) {
-            // Verificar se o input atual é o campo USB
-            const allPrinterNameInputs = form.querySelectorAll(`[name="${key}"]`);
-            const isFromUsbField = Array.from(allPrinterNameInputs).some(
-              input => input.id === 'printerNameUsb' && input.value === value
-            );
-            if (isFromUsbField) {
-              continue; // Ignorar PRINTER_NAME do campo USB quando rede está selecionado
-            }
+      // Se USB está visível, não coletar PRINTER_NAME aqui (será coletado depois diretamente do campo)
+      if (isUsbVisible && key === 'PRINTER_NAME') {
+        continue; // Será coletado diretamente do campo printerNameUsb na seção de limpeza final
+      }
+      
+      // Se rede está visível, ignorar PRINTER_NAME que vem do campo USB (que está oculto)
+      if (isNetworkVisible && key === 'PRINTER_NAME') {
+        const printerNameUsb = document.getElementById('printerNameUsb');
+        if (printerNameUsb && !isUsbVisible) {
+          // Verificar se o input atual é o campo USB
+          const allPrinterNameInputs = form.querySelectorAll(`[name="${key}"]`);
+          const isFromUsbField = Array.from(allPrinterNameInputs).some(
+            input => input.id === 'printerNameUsb' && input.value === value
+          );
+          if (isFromUsbField) {
+            continue; // Ignorar PRINTER_NAME do campo USB quando rede está selecionado
           }
         }
       }
-      
-      // Ignorar valores vazios ou apenas espaços
-      if (value && String(value).trim() !== '') {
-        envData[key] = String(value).trim();
-      }
     }
+    
+    // Ignorar valores vazios ou apenas espaços
+    if (value && String(value).trim() !== '') {
+      envData[key] = String(value).trim();
+    }
+  }
 
-    // Adicionar checkboxes
-    const checkboxes = form.querySelectorAll('input[type="checkbox"]');
-    checkboxes.forEach((cb) => {
-      if (cb.name) {
-        envData[cb.name] = cb.checked ? 'true' : 'false';
-      }
-    });
+  // Adicionar checkboxes
+  const checkboxes = form.querySelectorAll('input[type="checkbox"]');
+  checkboxes.forEach((cb) => {
+    if (cb.name) {
+      envData[cb.name] = cb.checked ? 'true' : 'false';
+    }
+  });
 
-    // Limpeza final baseada no tipo de conexão
-    if (printerType === 'thermal' && connectionType === 'usb') {
-      // USB/COM: garantir PRINTER_NAME e remover PRINTER_IP e PRINTER_PORT
-      const printerNameUsb = document.getElementById('printerNameUsb');
-      if (printerNameUsb) {
-        const printerNameValue = printerNameUsb.value ? printerNameUsb.value.trim() : '';
-        if (printerNameValue !== '') {
-          envData.PRINTER_NAME = printerNameValue;
-          console.log('Configuração USB/COM: salvando PRINTER_NAME =', envData.PRINTER_NAME);
-        } else {
-          console.warn('⚠️ Campo PRINTER_NAME vazio para USB/COM');
-          // Mesmo vazio, garantir que não tenha PRINTER_IP ou PRINTER_PORT
-        }
+  // Limpeza final baseada no tipo de conexão
+  if (printerType === 'thermal' && connectionType === 'usb') {
+    // USB/COM: garantir PRINTER_NAME e remover PRINTER_IP e PRINTER_PORT
+    const printerNameUsb = document.getElementById('printerNameUsb');
+    if (printerNameUsb) {
+      const printerNameValue = printerNameUsb.value ? printerNameUsb.value.trim() : '';
+      if (printerNameValue !== '') {
+        envData.PRINTER_NAME = printerNameValue;
+        console.log('Configuração USB/COM: salvando PRINTER_NAME =', envData.PRINTER_NAME);
       } else {
-        console.warn('⚠️ Campo printerNameUsb não encontrado');
+        console.warn('⚠️ Campo PRINTER_NAME vazio para USB/COM');
       }
-      // Remover explicitamente PRINTER_IP e PRINTER_PORT
-      delete envData.PRINTER_IP;
-      delete envData.PRINTER_PORT;
-      console.log('Configuração USB/COM: removendo PRINTER_IP e PRINTER_PORT');
-    } else if (printerType === 'thermal' && connectionType === 'network') {
-      // Rede: garantir PRINTER_IP e remover PRINTER_NAME (se veio do campo USB)
-      const printerNameUsb = document.getElementById('printerNameUsb');
-      if (printerNameUsb && envData.PRINTER_NAME && envData.PRINTER_NAME === printerNameUsb.value.trim()) {
-        delete envData.PRINTER_NAME;
-        console.log('Configuração Rede: removendo PRINTER_NAME do campo USB');
-      }
+    } else {
+      console.warn('⚠️ Campo printerNameUsb não encontrado');
+    }
+    // Remover explicitamente PRINTER_IP e PRINTER_PORT
+    delete envData.PRINTER_IP;
+    delete envData.PRINTER_PORT;
+    console.log('Configuração USB/COM: removendo PRINTER_IP e PRINTER_PORT');
+  } else if (printerType === 'thermal' && connectionType === 'network') {
+    // Rede: garantir PRINTER_IP e remover PRINTER_NAME (se veio do campo USB)
+    const printerNameUsb = document.getElementById('printerNameUsb');
+    if (printerNameUsb && envData.PRINTER_NAME && envData.PRINTER_NAME === printerNameUsb.value.trim()) {
+      delete envData.PRINTER_NAME;
+      console.log('Configuração Rede: removendo PRINTER_NAME do campo USB');
+    }
+  }
+
+  return envData;
+}
+
+async function saveConfiguration() {
+  try {
+    const envData = collectFormData();
+    if (!envData) {
+      showNotification('❌ Erro: Formulário não encontrado', 'error');
+      return;
     }
 
     // Salvar
     const result = await window.electronAPI.saveEnv(envData);
     if (result.success) {
-      alert('✅ Configuração salva com sucesso!');
+      showNotification('✅ Configuração salva com sucesso!', 'success');
       
       // Recarregar Device ID se disponível
       const deviceId = await window.electronAPI.readDeviceId();
@@ -289,11 +345,11 @@ async function saveConfiguration() {
         document.getElementById('deviceIdSection').style.display = 'block';
       }
     } else {
-      alert('❌ Erro ao salvar configuração');
+      showNotification('❌ Erro ao salvar configuração', 'error');
     }
   } catch (error) {
     console.error('Erro ao salvar:', error);
-    alert('❌ Erro ao salvar configuração: ' + error.message);
+    showNotification('❌ Erro ao salvar configuração: ' + error.message, 'error');
   }
 }
 
@@ -361,7 +417,7 @@ async function saveAutoStartStatus() {
         statusBox.className = 'info-box';
         statusText.innerHTML = '❌ <strong>Erro ao configurar auto-start:</strong> ' + (result.error || 'Erro desconhecido');
       }
-      alert('❌ Erro ao configurar auto-start: ' + (result.error || 'Erro desconhecido'));
+      showNotification('❌ Erro ao configurar auto-start: ' + (result.error || 'Erro desconhecido'), 'error');
     }
   } catch (error) {
     console.error('Erro ao salvar auto-start:', error);
@@ -369,7 +425,7 @@ async function saveAutoStartStatus() {
     if (checkbox) {
       checkbox.checked = !checkbox.checked; // Reverter checkbox
     }
-    alert('❌ Erro ao configurar auto-start: ' + error.message);
+    showNotification('❌ Erro ao configurar auto-start: ' + error.message, 'error');
   }
 }
 
@@ -398,9 +454,9 @@ async function testConnections() {
       message += '⚠️ Serviço não está em execução\n';
     }
 
-    alert(message);
+    showNotification(message, 'info', 5000);
   } catch (error) {
-    alert('❌ Erro ao testar conexões: ' + error.message);
+    showNotification('❌ Erro ao testar conexões: ' + error.message, 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = '🔍 Testar Conexões';
@@ -436,107 +492,12 @@ async function startService() {
   btnStart.textContent = '⏳ Salvando e iniciando...';
 
   try {
-    // Salvar configurações antes de iniciar (usar a mesma lógica de saveConfiguration)
-    const form = document.getElementById('configForm');
-    if (form) {
-      const formData = new FormData(form);
-      const envData = {};
-
-      // Obter tipo de impressora e conexão
-      const printerType = formData.get('PRINTER_TYPE');
-      const thermalConnection = document.getElementById('thermalConnection');
-      const connectionType = thermalConnection ? thermalConnection.value : null;
-      
-      // Verificar quais campos estão visíveis
-      const networkConfig = document.getElementById('networkConfig');
-      const usbConfig = document.getElementById('usbConfig');
-      const systemConfig = document.getElementById('systemConfig');
-      
-      const isNetworkVisible = networkConfig && networkConfig.style.display !== 'none';
-      const isUsbVisible = usbConfig && usbConfig.style.display !== 'none';
-      const isSystemVisible = systemConfig && systemConfig.style.display !== 'none';
-
-      // Coletar dados do formulário (filtrar valores vazios e campos ocultos)
-      for (const [key, value] of formData.entries()) {
-        // Ignorar THERMAL_CONNECTION (é apenas para UI)
-        if (key === 'THERMAL_CONNECTION') {
-          continue;
-        }
-        
-        // Para impressora térmica, filtrar campos baseado no tipo de conexão VISÍVEL
-        if (printerType === 'thermal') {
-          // Se USB/COM está visível, ignorar campos de rede
-          if (isUsbVisible && (key === 'PRINTER_IP' || key === 'PRINTER_PORT')) {
-            continue; // Ignorar campos de rede quando USB está selecionado
-          }
-          
-          // Se USB está visível, não coletar PRINTER_NAME aqui (será coletado depois diretamente do campo)
-          if (isUsbVisible && key === 'PRINTER_NAME') {
-            continue; // Será coletado diretamente do campo printerNameUsb na seção de limpeza final
-          }
-          
-          // Se rede está visível, ignorar PRINTER_NAME que vem do campo USB (que está oculto)
-          if (isNetworkVisible && key === 'PRINTER_NAME') {
-            const printerNameUsb = document.getElementById('printerNameUsb');
-            if (printerNameUsb && !isUsbVisible) {
-              // Verificar se o input atual é o campo USB
-              const allPrinterNameInputs = form.querySelectorAll(`[name="${key}"]`);
-              const isFromUsbField = Array.from(allPrinterNameInputs).some(
-                input => input.id === 'printerNameUsb' && input.value === value
-              );
-              if (isFromUsbField) {
-                continue; // Ignorar PRINTER_NAME do campo USB quando rede está selecionado
-              }
-            }
-          }
-        }
-        
-        // Ignorar valores vazios ou apenas espaços
-        if (value && String(value).trim() !== '') {
-          envData[key] = String(value).trim();
-        }
-      }
-
-      // Adicionar checkboxes
-      const checkboxes = form.querySelectorAll('input[type="checkbox"]');
-      checkboxes.forEach((cb) => {
-        if (cb.name) {
-          envData[cb.name] = cb.checked ? 'true' : 'false';
-        }
-      });
-
-      // Limpeza final baseada no tipo de conexão (mesma lógica de saveConfiguration)
-      if (printerType === 'thermal' && connectionType === 'usb') {
-        // USB/COM: garantir PRINTER_NAME e remover PRINTER_IP e PRINTER_PORT
-        const printerNameUsb = document.getElementById('printerNameUsb');
-        if (printerNameUsb) {
-          const printerNameValue = printerNameUsb.value ? printerNameUsb.value.trim() : '';
-          if (printerNameValue !== '') {
-            envData.PRINTER_NAME = printerNameValue;
-            console.log('Configuração USB/COM (Iniciar): salvando PRINTER_NAME =', envData.PRINTER_NAME);
-          } else {
-            console.warn('⚠️ Campo PRINTER_NAME vazio para USB/COM (Iniciar)');
-          }
-        } else {
-          console.warn('⚠️ Campo printerNameUsb não encontrado (Iniciar)');
-        }
-        // Remover explicitamente PRINTER_IP e PRINTER_PORT
-        delete envData.PRINTER_IP;
-        delete envData.PRINTER_PORT;
-        console.log('Configuração USB/COM (Iniciar): removendo PRINTER_IP e PRINTER_PORT');
-      } else if (printerType === 'thermal' && connectionType === 'network') {
-        // Rede: garantir PRINTER_IP e remover PRINTER_NAME (se veio do campo USB)
-        const printerNameUsb = document.getElementById('printerNameUsb');
-        if (printerNameUsb && envData.PRINTER_NAME && envData.PRINTER_NAME === printerNameUsb.value.trim()) {
-          delete envData.PRINTER_NAME;
-          console.log('Configuração Rede (Iniciar): removendo PRINTER_NAME do campo USB');
-        }
-      }
-
-      // Salvar configuração
+    // Salvar configurações antes de iniciar (usar função auxiliar)
+    const envData = collectFormData();
+    if (envData) {
       const saveResult = await window.electronAPI.saveEnv(envData);
       if (!saveResult.success) {
-        alert('⚠️ Aviso: Não foi possível salvar as configurações. O serviço será iniciado com as configurações anteriores.');
+        showNotification('⚠️ Aviso: Não foi possível salvar as configurações. O serviço será iniciado com as configurações anteriores.', 'warning', 5000);
       }
     }
 
@@ -551,12 +512,12 @@ async function startService() {
     const result = await window.electronAPI.startService();
     if (result.success) {
       updateServiceStatus(true);
-      alert('✅ ' + result.message);
+      showNotification('✅ ' + result.message, 'success');
     } else {
-      alert('❌ ' + result.message);
+      showNotification('❌ ' + result.message, 'error');
     }
   } catch (error) {
-    alert('❌ Erro ao iniciar serviço: ' + error.message);
+    showNotification('❌ Erro ao iniciar serviço: ' + error.message, 'error');
   } finally {
     btnStart.disabled = false;
     btnStart.textContent = '▶ Iniciar';
@@ -574,12 +535,12 @@ async function stopService() {
     const result = await window.electronAPI.stopService();
     if (result.success) {
       updateServiceStatus(false);
-      alert('✅ ' + result.message);
+      showNotification('✅ ' + result.message, 'success');
     } else {
-      alert('❌ ' + result.message);
+      showNotification('❌ ' + result.message, 'error');
     }
   } catch (error) {
-    alert('❌ Erro ao parar serviço: ' + error.message);
+    showNotification('❌ Erro ao parar serviço: ' + error.message, 'error');
   } finally {
     btnStop.disabled = false;
     btnStop.textContent = '⏹ Parar';
@@ -749,7 +710,7 @@ async function testPrint() {
     // Verificar se o serviço está rodando
     const status = await window.electronAPI.checkServiceStatus();
     if (!status.running) {
-      alert('❌ O serviço não está em execução. Por favor, inicie o serviço primeiro.');
+      showNotification('❌ O serviço não está em execução. Por favor, inicie o serviço primeiro.', 'warning');
       return;
     }
 
@@ -768,24 +729,18 @@ async function testPrint() {
     const result = await response.json();
 
     if (result.success) {
-      alert(`✅ Teste de impressão realizado com sucesso!\n\n` +
-            `Pedido: ${result.orderId}\n` +
-            `Cliente: ${result.details.customerName}\n` +
-            `Total: R$ ${result.details.total.toFixed(2)}\n` +
-            `Tempo: ${result.duration}\n\n` +
-            `Verifique se o recibo foi impresso na impressora.`);
+      showNotification(`✅ Teste de impressão realizado com sucesso!\n\nPedido: ${result.orderId}\nCliente: ${result.details.customerName}\nTotal: R$ ${result.details.total.toFixed(2)}\nTempo: ${result.duration}\n\nVerifique se o recibo foi impresso na impressora.`, 'success', 8000);
       
       // Atualizar status após teste
       setTimeout(() => {
         refreshMonitor();
       }, 1000);
     } else {
-      alert(`❌ Erro no teste de impressão:\n\n${result.error || 'Erro desconhecido'}`);
+      showNotification(`❌ Erro no teste de impressão:\n\n${result.error || 'Erro desconhecido'}`, 'error', 5000);
     }
   } catch (error) {
     console.error('Erro ao testar impressão:', error);
-    alert(`❌ Erro ao testar impressão:\n\n${error.message}\n\n` +
-          `Verifique se o serviço está rodando e se a porta HTTP está correta.`);
+    showNotification(`❌ Erro ao testar impressão:\n\n${error.message}\n\nVerifique se o serviço está rodando e se a porta HTTP está correta.`, 'error', 5000);
   } finally {
     btn.disabled = false;
     btn.textContent = originalText;
@@ -844,7 +799,7 @@ async function copyLogs() {
     const logsToCopy = filteredLogs.length > 0 ? filteredLogs : allLogs;
     
     if (logsToCopy.length === 0) {
-      alert('Nenhum log para copiar');
+      showNotification('Nenhum log para copiar', 'warning');
       return;
     }
 
@@ -892,7 +847,7 @@ async function copyLogs() {
       console.error('Fallback também falhou:', fallbackError);
     }
     
-    alert(`Erro ao copiar logs: ${error.message || 'Erro desconhecido'}\n\nTente selecionar e copiar manualmente (Ctrl+A, Ctrl+C)`);
+    showNotification(`Erro ao copiar logs: ${error.message || 'Erro desconhecido'}\n\nTente selecionar e copiar manualmente (Ctrl+A, Ctrl+C)`, 'error', 5000);
   }
 }
 
@@ -1060,7 +1015,7 @@ async function clearLogsDisplay() {
     const result = await window.electronAPI.clearLogs();
     
     if (!result.success) {
-      alert(`Erro ao limpar logs: ${result.error || 'Erro desconhecido'}`);
+      showNotification(`Erro ao limpar logs: ${result.error || 'Erro desconhecido'}`, 'error');
       return;
     }
 
@@ -1097,7 +1052,7 @@ async function clearLogsDisplay() {
     }, 2000);
   } catch (error) {
     console.error('Erro ao limpar logs:', error);
-    alert(`Erro ao limpar logs: ${error.message || 'Erro desconhecido'}`);
+    showNotification(`Erro ao limpar logs: ${error.message || 'Erro desconhecido'}`, 'error');
   }
 }
 
