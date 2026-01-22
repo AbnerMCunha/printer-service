@@ -213,10 +213,11 @@ async function saveConfiguration() {
           continue; // Ignorar campos de rede quando USB está selecionado
         }
         
-        // Se rede está visível, ignorar PRINTER_NAME do campo USB
+        // Se rede está visível, ignorar PRINTER_NAME (vem do campo USB que está oculto)
         if (isNetworkVisible && key === 'PRINTER_NAME') {
+          // Verificar se este PRINTER_NAME vem do campo USB (que está oculto)
           const printerNameUsb = document.getElementById('printerNameUsb');
-          if (printerNameUsb && formData.get('PRINTER_NAME') === printerNameUsb.value) {
+          if (printerNameUsb && !isUsbVisible) {
             continue; // Ignorar PRINTER_NAME do campo USB quando rede está selecionado
           }
         }
@@ -242,6 +243,9 @@ async function saveConfiguration() {
       const printerNameUsb = document.getElementById('printerNameUsb');
       if (printerNameUsb && printerNameUsb.value && printerNameUsb.value.trim() !== '') {
         envData.PRINTER_NAME = printerNameUsb.value.trim();
+        console.log('Configuração USB/COM: salvando PRINTER_NAME =', envData.PRINTER_NAME);
+      } else {
+        console.warn('⚠️ Campo PRINTER_NAME vazio para USB/COM');
       }
       // Remover explicitamente PRINTER_IP e PRINTER_PORT
       delete envData.PRINTER_IP;
@@ -545,6 +549,10 @@ function initializeMonitor() {
     refreshMonitor();
   });
 
+  document.getElementById('btnTestPrint').addEventListener('click', async () => {
+    await testPrint();
+  });
+
   document.getElementById('autoRefresh').addEventListener('change', (e) => {
     if (e.target.checked) {
       startAutoRefresh();
@@ -631,6 +639,60 @@ function stopAutoRefresh() {
   if (autoRefreshInterval) {
     clearInterval(autoRefreshInterval);
     autoRefreshInterval = null;
+  }
+}
+
+async function testPrint() {
+  const btn = document.getElementById('btnTestPrint');
+  const originalText = btn.textContent;
+  
+  btn.disabled = true;
+  btn.textContent = '⏳ Testando impressão...';
+
+  try {
+    // Verificar se o serviço está rodando
+    const status = await window.electronAPI.checkServiceStatus();
+    if (!status.running) {
+      alert('❌ O serviço não está em execução. Por favor, inicie o serviço primeiro.');
+      return;
+    }
+
+    // Obter a porta HTTP do serviço (padrão 3002)
+    const env = await window.electronAPI.readEnv();
+    const httpPort = env?.HTTP_PORT || '3002';
+
+    // Fazer requisição para o endpoint de teste
+    const response = await fetch(`http://localhost:${httpPort}/test-print`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      alert(`✅ Teste de impressão realizado com sucesso!\n\n` +
+            `Pedido: ${result.orderId}\n` +
+            `Cliente: ${result.details.customerName}\n` +
+            `Total: R$ ${result.details.total.toFixed(2)}\n` +
+            `Tempo: ${result.duration}\n\n` +
+            `Verifique se o recibo foi impresso na impressora.`);
+      
+      // Atualizar status após teste
+      setTimeout(() => {
+        refreshMonitor();
+      }, 1000);
+    } else {
+      alert(`❌ Erro no teste de impressão:\n\n${result.error || 'Erro desconhecido'}`);
+    }
+  } catch (error) {
+    console.error('Erro ao testar impressão:', error);
+    alert(`❌ Erro ao testar impressão:\n\n${error.message}\n\n` +
+          `Verifique se o serviço está rodando e se a porta HTTP está correta.`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
   }
 }
 

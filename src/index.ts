@@ -4,6 +4,7 @@ import logger from './utils/logger';
 import ApiService from './services/ApiService';
 import PrinterService from './services/PrinterService';
 import PollingService from './services/PollingService';
+import { Order } from './types';
 
 let pollingService: PollingService | null = null;
 let apiService: ApiService | null = null;
@@ -180,6 +181,170 @@ async function main(): Promise<void> {
         return res.status(500).json({
           success: false,
           error: error.message || 'Erro interno',
+        });
+      }
+    });
+
+    // Endpoint de teste de impressão
+    app.post('/test-print', async (req: Request, res: Response) => {
+      try {
+        logger.info('🧪 ========================================');
+        logger.info('🧪 INICIANDO TESTE DE IMPRESSÃO');
+        logger.info('🧪 ========================================');
+
+        // Criar pedido fictício completo para teste
+        const testOrder: Order = {
+          id: `test-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+          status: 'PENDING',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          total: 45.50,
+          customerName: 'Cliente Teste',
+          customerPhone: '11987654321',
+          orderType: 'DELIVERY',
+          paymentMethod: 'Dinheiro',
+          changeFor: 50.00,
+          notes: 'Este é um pedido de teste para verificar a comunicação com a impressora',
+          deliveryFee: 5.00,
+          discountAmount: 0,
+          customerId: 'customer-test-123',
+          kitchenReceiptAutoPrintedAt: null,
+          address: {
+            street: 'Rua das Flores',
+            number: '123',
+            complement: 'Apto 45',
+            neighborhood: 'Centro',
+            city: 'São Paulo',
+            state: 'SP',
+            cep: '01234-567',
+          },
+          items: [
+            {
+              id: 'item-1',
+              quantity: 2,
+              price: 15.00,
+              productId: 'prod-1',
+              product: {
+                id: 'prod-1',
+                name: 'Hambúrguer Artesanal',
+                price: 15.00,
+              },
+              notes: 'Sem cebola',
+            },
+            {
+              id: 'item-2',
+              quantity: 1,
+              price: 12.50,
+              productId: 'prod-2',
+              product: {
+                id: 'prod-2',
+                name: 'Batata Frita Grande',
+                price: 12.50,
+              },
+            },
+            {
+              id: 'item-3',
+              quantity: 1,
+              price: 3.00,
+              productId: 'prod-3',
+              product: {
+                id: 'prod-3',
+                name: 'Refrigerante Lata',
+                price: 3.00,
+              },
+            },
+          ],
+        };
+
+        logger.info(`📋 Pedido de teste criado: ${testOrder.id.slice(-8)}`);
+        logger.info(`   Cliente: ${testOrder.customerName}`);
+        logger.info(`   Total: R$ ${testOrder.total.toFixed(2)}`);
+        logger.info(`   Itens: ${testOrder.items.length}`);
+        logger.info(`   Tipo: ${testOrder.orderType}`);
+
+        // Verificar status da impressora
+        const printerConnected = printerService!.getConnected();
+        logger.info(`🖨️  Status da impressora: ${printerConnected ? 'CONECTADA' : 'DESCONECTADA'}`);
+
+        if (!printerConnected) {
+          logger.warn('⚠️  Impressora não está conectada, tentando conectar...');
+          const connected = await printerService!.connect();
+          if (!connected) {
+            logger.error('❌ Não foi possível conectar à impressora');
+            return res.status(500).json({
+              success: false,
+              error: 'Impressora não conectada',
+              printerConnected: false,
+            });
+          }
+          logger.info('✅ Impressora conectada com sucesso');
+        }
+
+        // Buscar nome do restaurante (ou usar padrão)
+        let restaurantName = 'Restaurante Teste';
+        try {
+          const restaurantInfo = await apiService!.getRestaurantInfo();
+          restaurantName = restaurantInfo?.name || restaurantName;
+          logger.info(`🏪 Nome do restaurante: ${restaurantName}`);
+        } catch (error: any) {
+          logger.warn(`⚠️  Não foi possível buscar nome do restaurante: ${error.message}`);
+          logger.info(`🏪 Usando nome padrão: ${restaurantName}`);
+        }
+
+        // Tentar imprimir
+        logger.info('🖨️  Iniciando processo de impressão...');
+        const startTime = Date.now();
+        
+        const printed = await printerService!.printReceipt(testOrder, restaurantName);
+        
+        const duration = Date.now() - startTime;
+        logger.info(`⏱️  Tempo de processamento: ${duration}ms`);
+
+        if (printed) {
+          logger.info('✅ ========================================');
+          logger.info('✅ TESTE DE IMPRESSÃO CONCLUÍDO COM SUCESSO');
+          logger.info('✅ ========================================');
+          logger.info(`✅ Pedido ${testOrder.id.slice(-8)} enviado para fila de impressão`);
+          logger.info(`✅ Verifique se o recibo foi impresso na impressora`);
+
+          return res.json({
+            success: true,
+            message: 'Teste de impressão realizado com sucesso',
+            orderId: testOrder.id.slice(-8),
+            printerConnected: true,
+            duration: `${duration}ms`,
+            details: {
+              customerName: testOrder.customerName,
+              total: testOrder.total,
+              itemsCount: testOrder.items.length,
+              restaurantName,
+            },
+          });
+        } else {
+          logger.error('❌ ========================================');
+          logger.error('❌ TESTE DE IMPRESSÃO FALHOU');
+          logger.error('❌ ========================================');
+          logger.error(`❌ Não foi possível enviar para a impressora`);
+
+          return res.status(500).json({
+            success: false,
+            error: 'Falha ao enviar para impressora',
+            printerConnected: printerConnected,
+            duration: `${duration}ms`,
+          });
+        }
+      } catch (error: any) {
+        logger.error('❌ ========================================');
+        logger.error('❌ ERRO NO TESTE DE IMPRESSÃO');
+        logger.error('❌ ========================================');
+        logger.error('Erro ao processar teste de impressão', {
+          error: error.message,
+          stack: error.stack,
+        });
+
+        return res.status(500).json({
+          success: false,
+          error: error.message || 'Erro interno no teste de impressão',
         });
       }
     });

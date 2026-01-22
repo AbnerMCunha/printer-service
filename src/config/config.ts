@@ -66,11 +66,11 @@ function validateConfig(config: Partial<Config>): void {
   // Validação condicional baseada no tipo de impressora
   if (config.printerType === 'thermal') {
     // Para térmicas: precisa de IP (rede) OU printerName (USB/COM)
-    // Normalizar valores: strings vazias devem ser tratadas como undefined
-    const printerIpValue = config.printerIp && config.printerIp.trim() !== '' ? config.printerIp.trim() : '';
+    // Normalizar valores: strings vazias devem ser tratadas como não definidas
+    const printerIpValue = config.printerIp && config.printerIp.trim() !== '' ? config.printerIp.trim() : undefined;
     const printerNameValue = config.printerName && config.printerName.trim() !== '' ? config.printerName.trim() : undefined;
     
-    const hasIp = printerIpValue !== '';
+    const hasIp = printerIpValue !== undefined && printerIpValue !== '';
     const hasName = printerNameValue !== undefined && printerNameValue !== '';
     
     // Log de debug para ajudar a identificar problemas (só se não passar na validação)
@@ -92,7 +92,12 @@ function validateConfig(config: Partial<Config>): void {
     }
     
     if (!hasIp && !hasName) {
-      missing.push('printerIp (para rede) ou printerName (para USB/COM)');
+      missing.push(
+        'Para impressora térmica, configure:\n' +
+        '  - PRINTER_IP (para conexão via rede TCP/IP) OU\n' +
+        '  - PRINTER_NAME (para conexão USB/COM, ex: COM3)\n' +
+        'No arquivo .env, configure um dos dois campos acima.'
+      );
     }
   } else if (config.printerType === 'system') {
     // Para impressoras do sistema, printerName é opcional (usa padrão)
@@ -101,8 +106,8 @@ function validateConfig(config: Partial<Config>): void {
 
   if (missing.length > 0) {
     throw new Error(
-      `Configurações obrigatórias faltando: ${missing.join(', ')}\n` +
-      'Verifique o arquivo .env\n' +
+      `❌ Configurações obrigatórias faltando:\n\n${missing.join('\n\n')}\n\n` +
+      '📝 Verifique o arquivo .env e configure os campos necessários.\n' +
       '💡 Dica: Configure ADMIN_EMAIL e ADMIN_PASSWORD para login automático (não precisa de API_TOKEN)'
     );
   }
